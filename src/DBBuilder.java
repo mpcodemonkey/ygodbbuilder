@@ -5,11 +5,9 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.safety.Whitelist;
 import org.jsoup.select.Elements;
+import org.jsoup.Connection.Response;
 
-import java.io.FileNotFoundException;
-import java.io.FilenameFilter;
-import java.io.PrintWriter;
-import java.sql.*;
+import java.io.*;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -20,7 +18,6 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.Timer;
 
 /**
  * Created by Jon on 1/12/2015.
@@ -281,7 +278,10 @@ public class DBBuilder {
 
                     setId = insertSet(releaseDate, setId, setName);
                     card.setYcrSetID(setId);
+                    card.setYcrImageName(grabCardImage(cardName, card.getYcrSetID(), cardDOM.getElementsByClass("cardtable-cardimage").first()));
                     cardsToInsert.add(new YgoCard(card));
+
+
 
                 }
             }
@@ -310,11 +310,13 @@ public class DBBuilder {
                             String[] rarities = cardRarity.split("/");
                             for(String r : rarities){
                                 card.setYcrRarity(r);
+                                card.setYcrImageName(grabCardImage(cardName, card.getYcrSetID(), cardDOM.getElementsByClass("cardtable-cardimage").first()));
                                 cardsToInsert.add(card); // card from same set has multiple rarities, needs to be inserted again with new rarity
                             }
                         }
                         else{
                             card.setYcrRarity(cardRarity);
+                            card.setYcrImageName(grabCardImage(cardName, card.getYcrSetID(), cardDOM.getElementsByClass("cardtable-cardimage").first()));
                             cardsToInsert.add(card);
                         }
 
@@ -348,11 +350,13 @@ public class DBBuilder {
                         String[] rarities = cardRarity.split("/");
                         for(String r : rarities){
                             card.setYcrRarity(r);
+                            card.setYcrImageName(grabCardImage(cardName, card.getYcrSetID(), cardDOM.getElementsByClass("cardtable-cardimage").first()));
                             cardsToInsert.add(card); // card from same set has multiple rarities, needs to be inserted again with new rarity
                         }
                     }
                     else{
                         card.setYcrRarity(cardRarity);
+                        card.setYcrImageName(grabCardImage(cardName, card.getYcrSetID(), cardDOM.getElementsByClass("cardtable-cardimage").first()));
                         cardsToInsert.add(card);
                     }
 
@@ -360,6 +364,59 @@ public class DBBuilder {
 
             }
         }
+    }
+
+    private String grabCardImage(String cardName, String setId, Element imageTable) {
+        if(imageTable == null) return null; //no image
+
+        String imageFolder = "Ygo" + File.separator + setId + File.separator;
+        String imageName = null;
+        Element imageRow = imageTable.getElementsByClass("cardtable-cardimage").first();
+        String imageUrl = imageRow.select("a[href]").first().attr("abs:href");
+        cardName = cardName.replaceAll("\"", "");
+        cardName = cardName.replaceAll("\"", "");
+        cardName = cardName.replaceAll("/", "");
+
+        //Open a URL Stream
+        Response resultImageResponse = null;
+        try{
+            resultImageResponse = Jsoup.connect(imageUrl).ignoreContentType(true).execute();
+        }
+        catch(IOException e){
+            e.printStackTrace();
+        }
+        new File(imageFolder).mkdirs();
+        File imageFile = new File(imageFolder + cardName + ".jpg");
+        if(imageFile.isFile()){ //already exists
+            imageName = new String(cardName);
+            return imageName;
+        }
+        if(!imageFile.exists()) {
+            try{
+                imageFile.createNewFile();
+            }catch(IOException e){
+                e.printStackTrace();
+            }
+
+        }
+        FileOutputStream out = null;
+        try{
+            out = (new FileOutputStream(new java.io.File(imageFolder + cardName + ".jpg")));
+        }catch(IOException e){
+            e.printStackTrace();
+        }
+
+
+        try{
+            out.write(resultImageResponse.bodyAsBytes());
+            out.close();
+        }catch(IOException e){
+            e.printStackTrace();
+        }
+
+        imageName = new String(cardName);
+        return imageName;
+
     }
 
     private String insertSet(String date, String setID, String setName) {
