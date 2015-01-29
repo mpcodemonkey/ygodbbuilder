@@ -5,6 +5,7 @@ public class YgoSet {
     private String ystIdentifier;
     private String ystName;
     private String ystReleaseDate;
+    private String ystImgPath;
 
     public String getYstIdentifier() {
         return ystIdentifier;
@@ -30,7 +31,15 @@ public class YgoSet {
         this.ystReleaseDate = ystReleaseDate;
     }
 
+    public String getYstImgPath() {
+        return ystImgPath;
+    }
+
+    public void setYstImgPath(String ystImgPath) {
+        this.ystImgPath = ystImgPath;
+    }
+
     public String toString(){
-        return String.format("%s,%s,%s", ystIdentifier, ystName, ystReleaseDate);
+        return String.format("%s,%s,%s", ystIdentifier, ystName, ystReleaseDate, ystImgPath);
     }
 }
