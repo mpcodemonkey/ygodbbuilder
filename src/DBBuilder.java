@@ -1,3 +1,4 @@
+import com.mysql.jdbc.StringUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
@@ -7,11 +8,12 @@ import org.jsoup.safety.Whitelist;
 import org.jsoup.select.Elements;
 import org.jsoup.Connection.Response;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.*;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.sql.*;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -26,6 +28,8 @@ import java.util.HashMap;
 public class DBBuilder {
     public HashMap<String, String> cardLinkTable = null;
     public HashMap<String, YgoSet> setRefTable = null;
+    public HashMap<String, YgoSet> cardSetTable = null;
+    public HashMap<YgoSet, Integer> setIDTable = null;
     public ArrayList<YgoCard> cardsToInsert = null;
 
     public void start(){
@@ -33,6 +37,7 @@ public class DBBuilder {
         cardsToInsert = new ArrayList<>();
         cardLinkTable = new HashMap<>();
         setRefTable = new HashMap<>();
+        cardSetTable = new HashMap<>();
         ArrayList<String> cardNames = null;
         String jsonString = null;
         JSONObject cardInfoObject = null;
@@ -64,8 +69,7 @@ public class DBBuilder {
         }
 
         parseCardInformation(cardNames);
-
-        //todo: change to database inserts
+/*
         try{
             Class.forName("com.mysql.jdbc.Driver");
         }
@@ -74,14 +78,14 @@ public class DBBuilder {
         }
         Connection conn = null;
         try{
-
-            conn = DriverManager.getConnection("jdbc:mysql://104.131.189.31:3306/ygo_rebuild?user=generic&password=generic11PASSWORD");
+            setIDTable = new HashMap<>();
+            conn = DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/ygo_rebuild?user=generic&password=generic11PASSWORD");
 
             for(YgoSet y : setRefTable.values()){
-                String sql = "INSERT INTO stt_yugioh_set (yst_uid, yst_name, yst_release_date) VALUES (?,?,?) ";
+                String sql = "INSERT INTO stt_yugioh_set (yst_name, yst_release_date, yst_path_name) VALUES (?,?,?) ";
                 PreparedStatement stmt = null;
                 try{
-                    stmt = conn.prepareStatement(sql);
+                    stmt = conn.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS);
                 }
                 catch(SQLException s){
                     s.printStackTrace();
@@ -89,18 +93,25 @@ public class DBBuilder {
 
                 System.out.println("Inserting " + y.getYstName());
 
-                stmt.setString(1, y.getYstIdentifier());
-                stmt.setString(2, y.getYstName());
-                stmt.setString(3, y.getYstReleaseDate());
+                stmt.setString(1, y.getYstName());
+                stmt.setString(2, y.getYstReleaseDate());
+                stmt.setString(3, y.getYstImgPath());
 
-                stmt.execute();
+                stmt.executeUpdate();
+                ResultSet rs = stmt.getGeneratedKeys();
+                int setRefId = -1;
+                if (rs != null && rs.next()) {
+                    setRefId = rs.getInt(1);
+                }
+
+                setIDTable.put(y, setRefId );
             }
 
             for(YgoCard y : cardsToInsert){
                 String sql = "INSERT INTO stt_yugioh_card (ycr_name, ycr_super_type, ycr_set_id, ycr_rarity, ycr_type, " +
                              "ycr_attribute, ycr_card_effect_type, ycr_level, ycr_rank, ycr_atk, ycr_def, ycr_flavor_text, " +
-                             "ycr_pendulum_scale, ycr_pendulum_flavor, ycr_image_name, ycr_icon, ycr_monster_type) " +
-                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ";
+                             "ycr_pendulum_scale, ycr_pendulum_flavor, ycr_image_name, ycr_icon, ycr_monster_type, ycr_card_id) " +
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ";
                 PreparedStatement stmt = null;
                 try{
                     stmt = conn.prepareStatement(sql);
@@ -113,7 +124,7 @@ public class DBBuilder {
 
                 stmt.setString(1, y.getYcrName());
                 stmt.setString(2, y.getYcrSuperType());
-                stmt.setString(3, y.getYcrSetID());
+                stmt.setInt(3, setIDTable.get(cardSetTable.get(y.getYcrCardID())));
                 stmt.setString(4, y.getYcrRarity());
                 stmt.setString(5, y.getYcrType());
                 stmt.setString(6, y.getYcrAttribute());
@@ -128,6 +139,7 @@ public class DBBuilder {
                 stmt.setString(15, y.getYcrImageName());
                 stmt.setString(16, y.getYcrIcon());
                 stmt.setString(17, y.getYcrMonsterType());
+                stmt.setString(18, y.getYcrCardID());
 
 
                 stmt.execute();
@@ -138,7 +150,7 @@ public class DBBuilder {
 
         catch(SQLException s){
             s.printStackTrace();
-        }
+        }*/
 
 
     }
@@ -146,13 +158,14 @@ public class DBBuilder {
     private void parseCardInformation(ArrayList<String> cardNames){
         String cardUrl = null;
         for(String cardName : cardNames) {
-
+            //skip token, too lazy to parse
+            if(cardName.equalsIgnoreCase("token")) continue;
             System.out.println("working on " + cardName);
 
             YgoCard card = new YgoCard();
             card.setYcrName(cardName);
-            cardUrl = "http://yugioh.wikia.com" + cardLinkTable.get(cardName);
-            //cardUrl = "http://yugioh.wikia.com/wiki/Witch_of_the_Black_Rose";
+            //cardUrl = "http://yugioh.wikia.com" + cardLinkTable.get(cardName);
+            cardUrl = "http://yugioh.wikia.com/wiki/Vylon_Alpha";
             String cardHtml = null;
             try {
                 cardHtml = Jsoup.connect(cardUrl).timeout(400000).ignoreContentType(true).execute().body();
@@ -196,7 +209,7 @@ public class DBBuilder {
                                 card.setYcrSuperType(data);
                             else{
                                 card.setYcrSuperType("Monster");
-                                card.setYcrType(data);
+                                card.setYcrMonsterType(data);
                             }
                             break;
                         }
@@ -224,7 +237,18 @@ public class DBBuilder {
                             break;
                         }
                         case "Types" :   {
-                            card.setYcrMonsterType(data);
+                            String[] typeInfo = data.split("/");
+                            card.setYcrMonsterType(typeInfo[0]);
+                            for(int i = 1; i < typeInfo.length; i++){
+                                if(card.getYcrType() == null){
+                                    card.setYcrType(typeInfo[i]);
+                                }
+                                else{
+
+                                    card.setYcrType(card.getYcrType().concat("," + typeInfo[i]));
+                                }
+                            }
+
                             break;
                         }
                         case "Pendulum Scale" :   {
@@ -240,6 +264,9 @@ public class DBBuilder {
 
                 }
             }
+
+            //make all nulls monsters
+            if(card.getYcrSuperType() == null) card.setYcrSuperType("Monster");
 
             Element effectBox = cardDOM.getElementsByClass("cardtablespanrow").first().getElementsByClass("navbox-list").first();
             String effect = null;
@@ -258,6 +285,32 @@ public class DBBuilder {
                 card.setYcrFlavorText(effect);
             }
 
+            //remove duplicates from effect field
+            if(card.getYcrCardEffectType() != null){
+                HashMap<String, String> doops = new HashMap<>();
+                String[] effects = card.getYcrCardEffectType().split(",");
+                if(effects != null){
+                    card.setYcrCardEffectType(null);
+                    for(String s : effects){
+                        s = s.trim();
+                        if(doops.get(s) == null){
+                            doops.put(s,s);
+                        }
+                    }
+                    for(String s : doops.values()){
+                        if(card.getYcrCardEffectType() == null){
+                            card.setYcrCardEffectType(s);
+                        }
+                        else{
+                            card.setYcrCardEffectType(card.getYcrCardEffectType() + ',' + s);
+                        }
+                    }
+                }
+            }
+
+            Element cardInfoSelect = cardDOM.select("b:contains(TCG)").first().parent();
+            cardInfoSelect = cardInfoSelect.getElementsByClass("navbox-list").first();
+
             //Element setInfo = cardDOM.getElementsByClass("wikitable").first();
             //boom! headshot!
             Element setInfo = cardDOM.select("table[class=wikitable sortable card-list]").first();
@@ -272,17 +325,30 @@ public class DBBuilder {
                 }
                 for(int i = 0 ; i < tmp.size() ; i+=4){
                     String releaseDate = tmp.get(i).text();
-                    String setId = tmp.get(i+1).text().split("-")[0].trim();
+                    String CardId = tmp.get(i+1).text();
                     String setName = tmp.get(i+2).text();
-                    card.setYcrRarity(tmp.get(i+3).text());
+                    card.setYcrRarity(normalizeRarity(tmp.get(i+3).text()));
+                    card.setYcrCardID(CardId);
 
-                    setId = insertSet(releaseDate, setId, setName);
-                    card.setYcrSetID(setId);
-                    card.setYcrImageName(grabCardImage(cardName, card.getYcrSetID(), cardDOM.getElementsByClass("cardtable-cardimage").first()));
+                    cardSetTable.put(CardId, insertSet(releaseDate, setName));
+                    card.setYcrImageName(grabCardImage(cardName, cardDOM.getElementsByClass("cardtable-cardimage").first(), setName, card));
                     cardsToInsert.add(new YgoCard(card));
 
 
 
+                }
+            }
+            else if(cardInfoSelect.getElementsByTag("a").size()%3 == 0){
+                Elements tmp = cardInfoSelect.getElementsByTag("a");
+                for(int i = 0 ; i < tmp.size() ; i+=3){
+                    String setName = tmp.get(i).text();
+                    String cardId = tmp.get(i+1).text();
+                    card.setYcrCardID(cardId);
+                    card.setYcrRarity(normalizeRarity(tmp.get(i+2).text().trim()));
+
+                    cardSetTable.put(cardId, insertSet("", setName));
+                    card.setYcrImageName(grabCardImage(cardName,cardDOM.getElementsByClass("cardtable-cardimage").first(), setName, card));
+                    cardsToInsert.add(new YgoCard(card));
                 }
             }
             else{
@@ -303,62 +369,67 @@ public class DBBuilder {
                         String setID = tmpStr.split("\\-")[0].trim();
                         tmpStr = tmpStr.split("\\- ")[1];
 
-                        setID = insertSet("", setID, setName);
-                        card.setYcrSetID(setID);
+                        insertSet("", setName);
                         String cardRarity = tmpStr.split("\\)")[0].trim();
                         if(cardRarity.contains("/")){
                             String[] rarities = cardRarity.split("/");
                             for(String r : rarities){
-                                card.setYcrRarity(r);
-                                card.setYcrImageName(grabCardImage(cardName, card.getYcrSetID(), cardDOM.getElementsByClass("cardtable-cardimage").first()));
-                                cardsToInsert.add(card); // card from same set has multiple rarities, needs to be inserted again with new rarity
+                                card.setYcrRarity(normalizeRarity(r));
+                                card.setYcrImageName(grabCardImage(cardName,cardDOM.getElementsByClass("cardtable-cardimage").first(), setName, card));
+                                cardsToInsert.add(new YgoCard(card)); // card from same set has multiple rarities, needs to be inserted again with new rarity
                             }
                         }
                         else{
-                            card.setYcrRarity(cardRarity);
-                            card.setYcrImageName(grabCardImage(cardName, card.getYcrSetID(), cardDOM.getElementsByClass("cardtable-cardimage").first()));
-                            cardsToInsert.add(card);
+                            card.setYcrRarity(normalizeRarity(cardRarity));
+                            card.setYcrImageName(grabCardImage(cardName,cardDOM.getElementsByClass("cardtable-cardimage").first(), setName, card));
+                            cardsToInsert.add(new YgoCard(card));
                         }
 
 
                     }
                 }
-                else{ //just one set
+                else{ //just one set(you'd think)
                     String tmpStr = tmp.text();
                     String setName = tmpStr.split("(\\()")[0].trim();
                     //System.out.println(e.text());
                     //edge case: rarity in parens
                     String setID = null;
                     String cardRarity = null;
-                    if(tmpStr.split("\\(").length > 2){
+                    boolean added = false;
+                    //multiple sets, one set of parens around the card ID and rarity
+                    if(tmpStr.split("\\)").length > 1){
+                        for(int i = 0; i < tmpStr.split("\\)").length ; i++){
+                            String tmpSetInfo = tmpStr.split("\\)")[i].trim();
+                            setName = tmpSetInfo.split("\\(")[0].trim();
+                            tmpSetInfo = tmpSetInfo.split("\\(")[1].trim();
+                            String CardId = tmpSetInfo.split("-")[0].trim() + '-' + tmpSetInfo.split("-")[1].trim();
+                            card.setYcrCardID(CardId);
+                            cardRarity = tmpSetInfo.split("-")[2].trim();
+
+                            cardSetTable.put(CardId, insertSet("", setName));
+
+                            checkRarityAndInsert(cardRarity, card, cardName, cardDOM, setName);
+                        }
+                        added=true;
+                    }
+                    else if(tmpStr.split("\\(").length > 2){
                         String tmpRarity = tmpStr.split(("\\("))[2];
                         tmpStr = tmpStr.split("(\\()")[1];
-                        setID = tmpStr.split("\\-")[0].trim();
+                        String cardId = tmpStr.split("\\-")[0].trim() + '-' + tmpStr.split("\\-")[1].trim();
+                        card.setYcrCardID(cardId);
                         cardRarity = tmpRarity.split("\\)")[0].trim();
+                        cardSetTable.put(cardId, insertSet("", setName));
                     }
                     else{
                         tmpStr = tmpStr.split("(\\()")[1];
-                        setID = tmpStr.split("\\-")[0].trim();
+                        String cardId = tmpStr.split("\\-")[0].trim() + '-' + tmpStr.split("\\-")[1].trim();
+                        card.setYcrCardID(cardId);
                         tmpStr = tmpStr.split("\\- ")[1];
                         cardRarity = tmpStr.split("\\)")[0].trim();
+                        cardSetTable.put(cardId, insertSet("", setName));
                     }
 
-
-                    setID = insertSet("", setID, setName);
-                    card.setYcrSetID(setID);
-                    if(cardRarity.contains("/")){
-                        String[] rarities = cardRarity.split("/");
-                        for(String r : rarities){
-                            card.setYcrRarity(r);
-                            card.setYcrImageName(grabCardImage(cardName, card.getYcrSetID(), cardDOM.getElementsByClass("cardtable-cardimage").first()));
-                            cardsToInsert.add(card); // card from same set has multiple rarities, needs to be inserted again with new rarity
-                        }
-                    }
-                    else{
-                        card.setYcrRarity(cardRarity);
-                        card.setYcrImageName(grabCardImage(cardName, card.getYcrSetID(), cardDOM.getElementsByClass("cardtable-cardimage").first()));
-                        cardsToInsert.add(card);
-                    }
+                    if(!added)checkRarityAndInsert(cardRarity, card, cardName, cardDOM, setName);
 
                 }
 
@@ -366,16 +437,330 @@ public class DBBuilder {
         }
     }
 
-    private String grabCardImage(String cardName, String setId, Element imageTable) {
-        if(imageTable == null) return null; //no image
+    private void checkRarityAndInsert(String cardRarity, YgoCard card, String cardName, Document cardDOM, String setName) {
+        if(cardsToInsert.contains(card))
+            return;
 
-        String imageFolder = "Ygo" + File.separator + setId + File.separator;
+        if(cardRarity.contains("/")){
+            String[] rarities = cardRarity.split("/");
+            for(String r : rarities){
+                card.setYcrRarity(normalizeRarity(r));
+                card.setYcrImageName(grabCardImage(cardName,cardDOM.getElementsByClass("cardtable-cardimage").first(), setName, card));
+                cardsToInsert.add(new YgoCard(card)); // card from same set has multiple rarities, needs to be inserted again with new rarity
+            }
+        }
+        else if(cardRarity.contains("\\")){
+            String[] rarities = cardRarity.split("\\\\");
+            for(String r : rarities){
+                card.setYcrRarity(normalizeRarity(r));
+                card.setYcrImageName(grabCardImage(cardName,cardDOM.getElementsByClass("cardtable-cardimage").first(), setName, card));
+                cardsToInsert.add(new YgoCard(card)); // card from same set has multiple rarities, needs to be inserted again with new rarity
+            }
+        }
+        else{
+            card.setYcrRarity(normalizeRarity(cardRarity));
+            card.setYcrImageName(grabCardImage(cardName, cardDOM.getElementsByClass("cardtable-cardimage").first(), setName, card));
+            cardsToInsert.add(new YgoCard(card));
+        }
+    }
+
+    //normalizes the card rarities
+    private String normalizeRarity(String r) {
+
+        //so we don't have to mess with multiple similar cases
+        r = r.toLowerCase();
+        switch(r){
+            case "c" :{
+                r = "Common";
+                break;
+            }
+            case "common" :{
+                r = "Common";
+                break;
+            }
+            case "nr" :{
+                r = "Normal Rare";
+                break;
+            }
+            case "sp" :{
+                r = "Short Print";
+                break;
+            }
+            case "hfr" :{
+                r = "Holofoil Rare";
+                break;
+            }
+            case "r" :{
+                r = "Rare";
+                break;
+            }
+            case "sr" :{
+                r = "Super Rare";
+                break;
+            }
+            case "super rare" :{
+                r = "Super Rare";
+                break;
+            }
+            case "ur" :{
+                r = "Ultra Rare";
+                break;
+            }
+            case "ultra rare" :{
+                r = "Ultra Rare";
+                break;
+            }
+            case "utr" :{
+                r = "Ultimate Rare";
+                break;
+            }
+            case "gr" :{
+                r = "Ghost Rare";
+                break;
+            }
+            case "ghost rare" :{
+                r = "Ghost Rare";
+                break;
+            }
+            case "hgr" :{
+                r = "Holographic Rare";
+                break;
+            }
+            case "plr" :{
+                r = "Platinum Rare";
+                break;
+            }
+            case "platinum rare" :{
+                r = "Platinum Rare";
+                break;
+            }
+            case "secret rare" :{
+                r = "Secret Rare";
+                break;
+            }
+            case "scr" :{
+                r = "Secret Rare";
+                break;
+            }
+            case "pscr" :{
+                r = "Prismatic Secret Rare";
+                break;
+            }
+            case "uscr" :{
+                r = "Ultra Secret Rare";
+                break;
+            }
+            case "ultra secret rare" :{
+                r = "Ultra Secret Rare";
+                break;
+            }
+            case "scur" :{
+                r = "Secret Ultra Rare";
+                break;
+            }
+            case "escr" :{
+                r = "Extra Secret Rare";
+                break;
+            }
+            case "plscr" :{
+                r = "Platinum Secret Rare";
+                break;
+            }
+            case "platinum secret rare" :{
+                r = "Platinum Secret Rare";
+                break;
+            }
+            case "npr" :{
+                r = "Normal Parallel Rare";
+                break;
+            }
+            case "normal parallel rare" :{
+                r = "Normal Parallel Rare";
+                break;
+            }
+            case "spr" :{
+                r = "Super Parallel Rare";
+                break;
+            }
+            case "upr" :{
+                r = "Ultra Parallel Rare";
+                break;
+            }
+            case "ultra parallel rare" :{
+                r = "Ultra Parallel Rare";
+                break;
+            }
+            case "sfr" :{
+                r = "Starfoil Rare";
+                break;
+            }
+            case "msr" :{
+                r = "Mosaic Rare";
+                break;
+            }
+            case "mosaic rare" :{
+                r = "Mosaic Rare";
+                break;
+            }
+            case "shr" :{
+                r = "Shatterfoil Rare";
+                break;
+            }
+            case "shatterfoil rare" :{
+                r = "Shatterfoil Rare";
+                break;
+            }
+            case "cr" :{
+                r = "Collector's Rare";
+                break;
+            }
+            case "mr" :{
+                r = "Millenium Rare";
+                break;
+            }
+            case "gur" :{
+                r = "Gold Rare";
+                break;
+            }
+            case "gold rare" :{
+                r = "Gold Rare";
+                break;
+            }
+            case "gscr" :{
+                r = "Gold Secret Rare";
+                break;
+            }
+            case "gold secret rare" :{
+                r = "Gold Secret Rare";
+                break;
+            }
+            case "ggr" :{
+                r = "Ghost-Gold Rare";
+                break;
+            }
+            case "ghost\\gold rare" :{
+                r = "Ghost-Gold Rare";
+                break;
+            }
+            case "ghost/gold rare" :{
+                r = "Ghost-Gold Rare";
+                break;
+            }
+            case "dnpr" :{
+                r = "Duel Terminal Normal Parallel Rare";
+                break;
+            }
+            case "duel terminal normal parallel rare" :{
+                r = "Duel Terminal Normal Parallel Rare";
+                break;
+            }
+            case "dnrpr" :{
+                r = "Duel Terminal Normal Rare Parallel Rare";
+                break;
+            }
+            case "drpr" :{
+                r = "Duel Terminal Rare Parallel Rare";
+                break;
+            }
+            case "duel terminal rare parallel rare" :{
+                r = "Duel Terminal Rare Parallel Rare";
+                break;
+            }
+            case "dspr" :{
+                r = "Duel Terminal Super Parallel Rare";
+                break;
+            }
+            case "dupr" :{
+                r = "Duel Terminal Ultra Parallel Rare";
+                break;
+            }
+            case "dscrp" :{
+                r = "Duel Terminal Secret Parallel Rare";
+                break;
+            }
+            case "se" :{
+                r = "Standard Edition";
+                break;
+            }
+            case "1e" :{
+                r = "1st Edition";
+                break;
+            }
+            case "ue" :{
+                r = "Unilimited Edition";
+                break;
+            }
+            case "le" :{
+                r = "Limited Edition";
+                break;
+            }
+            case "dt" :{
+                r = "Duel Terminal Edition";
+                break;
+            }
+            case "fr" :{
+                r = "Fixed Rarity";
+                break;
+            }
+            case "rp" :{
+                r = "Replica";
+                break;
+            }
+            case "gc" :{
+                r = "Giant Card";
+                break;
+            }
+            case "op" :{
+                r = "Official Proxy";
+                break;
+            }
+            case "ct" :{
+                r = "Case Topper";
+                break;
+            }
+            case "osp" :{
+                r = "Oversized Promo";
+                break;
+            }
+            case "bam" :{
+                r = "BAM Legend";
+                break;
+            }
+            default:{ //hack for specific sets
+                if(r.split("-").length == 3) {
+                    String tmp = r.split("-")[2].trim();
+                    r = normalizeRarity(tmp);
+                }
+                break;
+            }
+
+        }
+        return r;
+    }
+
+    private String grabCardImage(String cardName, Element imageTable, String setID, YgoCard card) {
+        /*if(imageTable == null){
+            String imageName = new String(cardName);
+            imageName = imageName.replaceAll("\"", "");
+            imageName = imageName.replace("\\", "");
+            imageName = imageName.replaceAll("/", "");
+            imageName = imageName.replaceAll(":", "");
+            return imageName;
+        }
+
+        setID = setID.replaceAll("\"", "");
+        setID = setID.replace("\\", "");
+        setID = setID.replaceAll("/", "");
+        setID = setID.replaceAll(":", "");
+
+        String imageFolder = "C:\\Users\\Jon\\Desktop\\Ygo" + File.separator + setID + File.separator;
         String imageName = null;
         Element imageRow = imageTable.getElementsByClass("cardtable-cardimage").first();
         String imageUrl = imageRow.select("a[href]").first().attr("abs:href");
-        cardName = cardName.replaceAll("\"", "");
-        cardName = cardName.replaceAll("\"", "");
-        cardName = cardName.replaceAll("/", "");
+        imageName = cardName.replaceAll("\"", "");
+        imageName = imageName.replace("\\", "");
+        imageName = imageName.replaceAll("/", "");
+        imageName = imageName.replaceAll(":", "");
 
         //Open a URL Stream
         Response resultImageResponse = null;
@@ -386,9 +771,8 @@ public class DBBuilder {
             e.printStackTrace();
         }
         new File(imageFolder).mkdirs();
-        File imageFile = new File(imageFolder + cardName + ".jpg");
+        File imageFile = new File(imageFolder + imageName + ".jpg");
         if(imageFile.isFile()){ //already exists
-            imageName = new String(cardName);
             return imageName;
         }
         if(!imageFile.exists()) {
@@ -401,7 +785,7 @@ public class DBBuilder {
         }
         FileOutputStream out = null;
         try{
-            out = (new FileOutputStream(new java.io.File(imageFolder + cardName + ".jpg")));
+            out = (new FileOutputStream(new java.io.File(imageFolder + imageName + ".jpg")));
         }catch(IOException e){
             e.printStackTrace();
         }
@@ -413,52 +797,79 @@ public class DBBuilder {
         }catch(IOException e){
             e.printStackTrace();
         }
+        */
+        String imageName = new String(cardName);
 
-        imageName = new String(cardName);
-        return imageName;
+        Element imageRow = imageTable.getElementsByClass("cardtable-cardimage").first();
+        String imageUrl = imageRow.select("a[href]").first().attr("abs:href");
+        imageName = imageName.replaceAll("\"", "");
+        imageName = imageName.replace("\\", "");
+        imageName = imageName.replaceAll("/", "");
+        imageName = imageName.replaceAll(":", "");
+        imageName = imageName.replaceAll("\\?", "");
+        //imageName = imageName.replaceAll("!", "");
+        imageName += ' ' + card.getYcrCardID() + '-' + card.getYcrRarity();
+        imageName = imageName.toLowerCase();
+        imageName = imageName.replaceAll("\\?", "x");
+
+        String imgPath = setID.replaceAll("\"", "");
+        imgPath = imgPath.replace("\\", "");
+        imgPath = imgPath.replaceAll("/", "");
+        imgPath = imgPath.replaceAll(":", "");
+        imgPath = imgPath.replaceAll("\\?", "");
+        //imgPath = imgPath.replaceAll("!", "");
+        imgPath = imgPath.toLowerCase();
+        String imageFolder = "C:\\Users\\Jon\\Desktop\\Ygo" + File.separator + imgPath + File.separator;
+        new File(imageFolder).mkdirs(); //to create the directory if it doesn't exist;
+        File imageFile = new File(imageFolder + imageName + ".jpg");
+        if(imageFile.isFile() || imageUrl == null || imageUrl.equals("")){ //already exists or image not found on site
+            if(setRefTable.get(setID).getYstImgPath() == null) setRefTable.get(setID).setYstImgPath(imgPath);
+            return imageName + ".jpg";
+        }
+
+        BufferedImage image = null;
+        URL url = null;
+        try{
+            url = new URL(imageUrl);
+        }
+        catch(MalformedURLException e){
+            e.printStackTrace();
+        }
+
+
+        try{
+            image = ImageIO.read(url);
+
+            ImageIO.write(image, "jpg",new File(imageFolder + imageName + ".jpg"));
+        }
+        catch(IOException e){
+            e.printStackTrace();
+        }
+        if(setRefTable.get(setID).getYstImgPath() == null) setRefTable.get(setID).setYstImgPath(imgPath);
+
+        return imageName + ".jpg";
 
     }
 
-    private String insertSet(String date, String setID, String setName) {
+    private YgoSet insertSet(String date, String setName) {
+        YgoSet y = new YgoSet();
+        String setID = new String(setName);
         if(setRefTable.get(setID) != null){
             if(date.length() > 0 && setRefTable.get(setID).getYstReleaseDate().length() == 0 && setName.equalsIgnoreCase(setRefTable.get(setID).getYstName())){
-                //todo: check if set dates differ, assign s to the set with the later date
                 setRefTable.get(setID).setYstReleaseDate(date);
+                y = setRefTable.get(setID);
             }
-            else if(date.length() > 0 && setRefTable.get(setID).getYstReleaseDate().length() > 0){
-                DateFormat format = new SimpleDateFormat("yyyy-MM-dd");
-                Date incomingDate = null;
-                Date existingDate = null;
-                try{
-                    incomingDate = format.parse(date);
-                    existingDate = format.parse(setRefTable.get(setID).getYstReleaseDate());
-                }
-                catch(ParseException p){
-                    p.printStackTrace();
-                }
-                if(incomingDate.after(existingDate)){
-                    setID += "S";//interim fix for sets that have the same name, konami has an arsehole division
-                    setID = insertSet(date, setID, setName);//recursive call with new set name
-                }
-                else if(incomingDate.before(existingDate)){
-                    setRefTable.get(setID).setYstIdentifier(setRefTable.get(setID).getYstIdentifier() + "S");
-                    YgoSet s = new YgoSet();
-                    s.setYstReleaseDate(date);
-                    s.setYstName(setName);
-                    s.setYstIdentifier(setID);
-                    setRefTable.put(setID, s);
-
-                }//otherwise don't insert the date, is the same set
+            else{
+                y = setRefTable.get(setID);
             }
         }
         else{ //create a new set
-            YgoSet s = new YgoSet();
-            s.setYstReleaseDate(date);
-            s.setYstIdentifier(setID);
-            s.setYstName(setName);
-            setRefTable.put(setID, s);
+            y.setYstReleaseDate(date);
+            y.setYstIdentifier(setID);
+            y.setYstName(setName);
+            setRefTable.put(setID, y);
         }
-        return setID;
+        return y;
     }
 
     public Integer tryParse(String text) {

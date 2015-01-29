@@ -4,7 +4,7 @@
 public class YgoCard {
     private String ycrName;
     private String ycrSuperType; //monster, trap, spell
-    private String ycrSetID;
+    private int ycrSetID;
     private String ycrRarity;
     private String ycrType;
     private String ycrAttribute;
@@ -19,6 +19,7 @@ public class YgoCard {
     private String ycrImageName;
     private String ycrIcon;
     private String ycrMonsterType;
+    private String ycrCardID;
 
     public String getYcrName() {
         return ycrName;
@@ -36,11 +37,11 @@ public class YgoCard {
         this.ycrSuperType = ycrSuperType;
     }
 
-    public String getYcrSetID() {
+    public int getYcrSetID() {
         return ycrSetID;
     }
 
-    public void setYcrSetID(String ycrSetID) {
+    public void setYcrSetID(int ycrSetID) {
         this.ycrSetID = ycrSetID;
     }
 
@@ -156,18 +157,26 @@ public class YgoCard {
         this.ycrCardEffectType = ycrCardEffectType;
     }
 
+    public String getYcrCardID() {
+        return ycrCardID;
+    }
+
+    public void setYcrCardID(String ycrCardID) {
+        this.ycrCardID = ycrCardID;
+    }
+
     public String toString(){
-        return String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
+        return String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
                           ycrName, ycrSuperType, ycrSetID, ycrRarity, ycrType, ycrAttribute,
                           ycrCardEffectType, ycrLevel, ycrRank, ycrAtk, ycrDef, ycrFlavorText,
-                          ycrPendulumScale, ycrPendulumFlavor, ycrImageName, ycrIcon, ycrMonsterType);
+                          ycrPendulumScale, ycrPendulumFlavor, ycrImageName, ycrIcon, ycrMonsterType, ycrCardID);
     }
 
     public YgoCard(){}
     public YgoCard(YgoCard that){
         this.ycrName = new String(that.ycrName);
         this.ycrSuperType = that.ycrSuperType == null ? null : new String(that.ycrSuperType);
-        this.ycrSetID = that.ycrSetID == null ? null : new String(that.ycrSetID);
+        this.ycrSetID = that.ycrSetID;
         this.ycrRarity = that.ycrRarity == null ? null : new String(that.ycrRarity);
         this.ycrType = that.ycrType == null? null : new String(that.ycrType);
         this.ycrAttribute = that.ycrAttribute == null ? null : new String(that.ycrAttribute);
@@ -182,6 +191,7 @@ public class YgoCard {
         this.ycrImageName = that.ycrImageName == null ? null : new String(that.ycrImageName);
         this.ycrIcon = that.ycrIcon == null ? null : new String(that.ycrIcon);
         this.ycrMonsterType = that.ycrMonsterType == null ? null : new String(that.ycrMonsterType);
+        this.ycrCardID = that.ycrCardID == null ? null : new String(that.ycrCardID);
     }
 }
 
