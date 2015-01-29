@@ -232,6 +232,10 @@ public class DBBuilder {
                             card.setYcrLevel(tryParse(data) == null ? 0 : tryParse(data));
                             break;
                         }
+                        case "Rank" :   {
+                            card.setYcrRank(tryParse(data) == null ? 0 : tryParse(data));
+                            break;
+                        }
                         case "Attribute" :   {
                             card.setYcrAttribute(data);
                             break;
